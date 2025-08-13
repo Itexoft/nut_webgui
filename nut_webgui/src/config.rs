@@ -21,6 +21,8 @@ pub struct ServerConfig {
 
   pub http_server: HttpServerConfig,
   pub upsd: UpsdConfig,
+  pub allow_instcmds_list: bool,
+  pub dangerous_cmds: Vec<Box<str>>,
 }
 
 #[derive(Debug)]
@@ -98,6 +100,12 @@ impl Default for ServerConfig {
       log_level: Level::INFO,
       upsd: Default::default(),
       http_server: Default::default(),
+      allow_instcmds_list: true,
+      dangerous_cmds: vec![
+        "driver.killpower".into(),
+        "shutdown.*".into(),
+        "load.off".into(),
+      ],
     }
   }
 }
