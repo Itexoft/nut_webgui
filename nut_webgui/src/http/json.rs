@@ -6,14 +6,16 @@ use crate::{
 use axum::{
   Json,
   extract::{
-    Path, State,
+    Path, Query, State,
     rejection::{JsonRejection, PathRejection},
   },
   http::StatusCode,
   response::{IntoResponse, Response},
 };
+use nut_webgui_upsmc::InstCmd;
+use nut_webgui_upsmc::errors::{ErrorKind, ProtocolError};
 use nut_webgui_upsmc::{CmdName, UpsName, Value, VarName, clients::NutAuthClient};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use tracing::{info, warn};
 
 macro_rules! require_auth_config {
@@ -46,12 +48,24 @@ pub struct RwRequest {
 pub async fn get_ups_by_name(
   State(rs): State<RouterState>,
   ups_name: Result<Path<UpsName>, PathRejection>,
+  Query(query): Query<GetUpsQuery>,
 ) -> Result<Response, ProblemDetail> {
   let Path(ups_name) = ups_name?;
+  let include_cmds = query.include.as_deref() == Some("commands");
   let server_state = rs.state.read().await;
-
   if let Some(ups) = server_state.devices.get(&ups_name) {
-    Ok(Json(ups).into_response())
+    if include_cmds {
+      let mut value = serde_json::to_value(ups).unwrap();
+      drop(server_state);
+      let (addr, user, password) = require_auth_config!(&rs.config.upsd)?;
+      let mut client = NutAuthClient::connect(addr, user, password).await?;
+      let cmds = client.list_instcmds(&ups_name).await?;
+      _ = client.close().await;
+      value["commands"] = serde_json::to_value(cmds).unwrap();
+      Ok(Json(value).into_response())
+    } else {
+      Ok(Json(ups).into_response())
+    }
   } else {
     Err(ProblemDetail::new(
       "Device not found",
@@ -66,6 +80,11 @@ pub async fn get_ups_list(State(rs): State<RouterState>) -> Response {
   device_refs.sort_by(|r, l| r.name.cmp(&l.name));
 
   Json(device_refs).into_response()
+}
+
+#[derive(Default, Deserialize)]
+pub struct GetUpsQuery {
+  include: Option<String>,
 }
 
 pub async fn post_command(
@@ -116,6 +135,84 @@ pub async fn post_command(
   );
 
   Ok(StatusCode::ACCEPTED)
+}
+
+#[derive(Serialize)]
+struct InstCmdResponse<'a> {
+  ups: &'a UpsName,
+  as_user: &'a str,
+  count: usize,
+  commands: Vec<InstCmd>,
+}
+
+pub async fn get_instcmds(
+  State(rs): State<RouterState>,
+  ups_name: Result<Path<UpsName>, PathRejection>,
+) -> Result<Response, ProblemDetail> {
+  if !rs.config.allow_instcmds_list {
+    return Err(ProblemDetail::new(
+      "Target resource not found",
+      StatusCode::NOT_FOUND,
+    ));
+  }
+  let Path(ups_name) = ups_name?;
+  let (addr, user, password) = require_auth_config!(&rs.config.upsd)?;
+  let mut client = match NutAuthClient::connect(addr, user, password).await {
+    Ok(c) => c,
+    Err(err) => {
+      return match err.kind() {
+        ErrorKind::ProtocolError {
+          inner: ProtocolError::AccessDenied,
+        } => Err(ProblemDetail::new(
+          "Access denied",
+          StatusCode::UNAUTHORIZED,
+        )),
+        ErrorKind::ProtocolError {
+          inner: ProtocolError::UnknownUps,
+        } => Err(ProblemDetail::new(
+          "Device not found",
+          StatusCode::NOT_FOUND,
+        )),
+        ErrorKind::IOError { .. } | ErrorKind::RequestTimeout => Err(ProblemDetail::new(
+          "UPS daemon unreachable",
+          StatusCode::BAD_GATEWAY,
+        )),
+        _ => Err(err.into()),
+      };
+    }
+  };
+  let cmds = match client.list_instcmds(&ups_name).await {
+    Ok(c) => c,
+    Err(err) => {
+      return match err.kind() {
+        ErrorKind::ProtocolError {
+          inner: ProtocolError::AccessDenied,
+        } => Err(ProblemDetail::new(
+          "Access denied",
+          StatusCode::UNAUTHORIZED,
+        )),
+        ErrorKind::ProtocolError {
+          inner: ProtocolError::UnknownUps,
+        } => Err(ProblemDetail::new(
+          "Device not found",
+          StatusCode::NOT_FOUND,
+        )),
+        ErrorKind::IOError { .. } | ErrorKind::RequestTimeout => Err(ProblemDetail::new(
+          "UPS daemon unreachable",
+          StatusCode::BAD_GATEWAY,
+        )),
+        _ => Err(err.into()),
+      };
+    }
+  };
+  _ = client.close().await;
+  let response = InstCmdResponse {
+    ups: &ups_name,
+    as_user: user,
+    count: cmds.len(),
+    commands: cmds,
+  };
+  Ok(Json(response).into_response())
 }
 
 pub async fn post_fsd(

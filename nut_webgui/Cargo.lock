@@ -800,6 +800,7 @@ dependencies = [
  "nut_webgui_client",
  "nut_webgui_upsmc",
  "serde",
+ "serde_json",
  "tokio",
  "tokio-util",
  "toml",

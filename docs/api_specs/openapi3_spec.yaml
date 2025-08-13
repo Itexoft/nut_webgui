@@ -122,6 +122,13 @@ paths:
           allowEmptyValue: false
           schema:
             type: string
+        - name: include
+          in: query
+          required: false
+          schema:
+            type: string
+            enum:
+              - commands
       tags:
         - ups
       operationId: "api_ups_get"
@@ -162,6 +169,43 @@ paths:
                 $ref: "#/components/schemas/ProblemDetails"
 
   /api/ups/{ups_name}/instcmd:
+    get:
+      parameters:
+        - name: ups_name
+          in: path
+          description: "UPS name"
+          required: true
+          allowEmptyValue: false
+          schema:
+            type: string
+      tags:
+        - ups
+      operationId: "api_ups_list_instcmd"
+      responses:
+        "200":
+          description: "Instant command list."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InstCmdList"
+        "401":
+          description: "Upsd user and password configs are not set."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetails"
+        "404":
+          description: "Ups does not exists."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetails"
+        "502":
+          description: "UPS daemon unreachable."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetails"
     description: "Instantiate UPS INSTCMD command."
     post:
       requestBody:
@@ -404,9 +448,13 @@ components:
               - type: "number"
               - type: "string"
         commands:
-          type: "array"
-          items:
-            type: "string"
+          oneOf:
+            - type: "array"
+              items:
+                type: "string"
+            - type: "array"
+              items:
+                $ref: "#/components/schemas/InstCmd"
         attached:
           type: "array"
           items:
@@ -470,6 +518,36 @@ components:
             - "Online"
             - "Dead"
             - "NotReady"
+
+    InstCmd:
+      type: object
+      required:
+        - id
+        - desc
+      properties:
+        id:
+          type: string
+        desc:
+          type: string
+
+    InstCmdList:
+      type: object
+      required:
+        - ups
+        - as_user
+        - count
+        - commands
+      properties:
+        ups:
+          type: string
+        as_user:
+          type: string
+        count:
+          type: number
+        commands:
+          type: array
+          items:
+            $ref: "#/components/schemas/InstCmd"
   examples:
     health_200:
       summary: "Server Online"

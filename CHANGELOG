@@ -1,5 +1,8 @@
 # v0.5.3 - July 28, 2025
 
+## Added
+- GET /api/ups/{ups_name}/instcmd endpoint for listing instant commands.
+
 ## Fixed
 - Compressed assets does not work on some browsers.
 

@@ -68,11 +68,16 @@ impl HttpServer {
       .fallback(|| async { StatusCode::NOT_FOUND })
       .layer(CorsLayer::permissive());
 
+    let instcmd_route = if config.allow_instcmds_list {
+      get(json::get_instcmds).post(json::post_command)
+    } else {
+      post(json::post_command)
+    };
     let data_api = Router::new()
       .route("/ups", get(json::get_ups_list))
       .route("/ups/{ups_name}", get(json::get_ups_by_name))
       .route("/ups/{ups_name}", patch(json::patch_var))
-      .route("/ups/{ups_name}/instcmd", post(json::post_command))
+      .route("/ups/{ups_name}/instcmd", instcmd_route)
       .route(
         "/ups/{ups_name}/fsd",
         post(json::post_fsd).layer(ValidateRequestHeaderLayer::custom(
