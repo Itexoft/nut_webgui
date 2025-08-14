@@ -183,7 +183,7 @@
             "schema": {
               "type": "string"
             }
-          }
+          },
         ],
         "tags": [
           "ups"
@@ -730,8 +730,7 @@
             ]
           }
         }
-      }
-    },
+      },
     "examples": {
       "health_200": {
         "summary": "Server Online",

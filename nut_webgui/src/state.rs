@@ -14,6 +14,7 @@ pub struct ServerState {
 
   /// Shared description table for ups variables
   pub shared_desc: HashMap<DescriptionKey, Box<str>>,
+
 }
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy, Serialize)]
@@ -83,3 +84,4 @@ impl Borrow<str> for DescriptionKey {
     &self.inner
   }
 }
+

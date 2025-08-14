@@ -404,9 +404,9 @@ components:
               - type: "number"
               - type: "string"
         commands:
-          type: "array"
+          type: array
           items:
-            type: "string"
+            type: string
         attached:
           type: "array"
           items:
@@ -470,6 +470,7 @@ components:
             - "Online"
             - "Dead"
             - "NotReady"
+
   examples:
     health_200:
       summary: "Server Online"
