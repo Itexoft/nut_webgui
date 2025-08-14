@@ -144,6 +144,10 @@ A simple JSON-based API is available for integration and automation purposes.
 
 OpenAPI 3.0.0 specification files: [json](docs/api_specs/openapi3_spec.json) | [yaml](docs/api_specs/openapi3_spec.yaml)
 
+## Back-compat
+
+Legacy integrations may keep using `GET /api/ups/{name}/instcmd` but switching to `GET /api/ups/{name}` is recommended.
+
 ## Probes
 
 nut_webgui has basic probe endpoints to check server health and readiness:
