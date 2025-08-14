@@ -1,3 +1,12 @@
+# v0.5.4 - July 29, 2025
+
+## Changed
+- GET /api/ups/{ups_name} returns instant commands without extra query parameters.
+- UPS power is estimated from load and nominal values when direct metrics are missing.
+
+## Added
+- UI marks approximated power readings.
+
 # v0.5.3 - July 28, 2025
 
 ## Added

@@ -15,6 +15,9 @@ use axum::{
 use nut_webgui_upsmc::InstCmd;
 use nut_webgui_upsmc::errors::{ErrorKind, ProtocolError};
 use nut_webgui_upsmc::{CmdName, UpsName, Value, VarName, clients::NutAuthClient};
+use once_cell::sync::Lazy;
+use std::{collections::HashMap, time::{Duration, Instant}};
+use tokio::sync::Mutex;
 use serde::{Deserialize, Serialize};
 use tracing::{info, warn};
 
@@ -34,6 +37,48 @@ macro_rules! require_auth_config {
   };
 }
 
+static COMMAND_CACHE: Lazy<Mutex<HashMap<UpsName, (Instant, Vec<InstCmd>)>>> = Lazy::new(|| Mutex::new(HashMap::new()));
+
+async fn get_commands_cached(
+  rs: &RouterState,
+  ups_name: &UpsName,
+  force: bool,
+) -> Vec<InstCmd> {
+  let now = Instant::now();
+  if !force {
+    let cache = COMMAND_CACHE.lock().await;
+    if let Some((exp, cmds)) = cache.get(ups_name) {
+      if *exp > now {
+        return cmds.clone();
+      }
+    }
+  }
+  let (addr, user, password) = match (&rs.config.upsd.user, &rs.config.upsd.pass) {
+    (Some(user), Some(pass)) => (rs.config.upsd.get_socket_addr(), user.as_ref(), pass.as_ref()),
+    _ => return Vec::new(),
+  };
+  let mut client = match NutAuthClient::connect(addr, user, password).await {
+    Ok(c) => c,
+    Err(err) => {
+      warn!(message = "failed to list instcmds", device = %ups_name, reason = %err);
+      return Vec::new();
+    }
+  };
+  let cmds = match client.list_instcmds(ups_name).await {
+    Ok(v) => v,
+    Err(err) => {
+      warn!(message = "failed to list instcmds", device = %ups_name, reason = %err);
+      Vec::new()
+    }
+  };
+  _ = client.close().await;
+  let ttl = if cmds.is_empty() { Duration::from_secs(1) } else { Duration::from_secs(2) };
+  let exp = now + ttl;
+  let mut cache = COMMAND_CACHE.lock().await;
+  cache.insert(ups_name.clone(), (exp, cmds.clone()));
+  cmds
+}
+
 #[derive(Debug, Deserialize)]
 pub struct CommandRequest {
   instcmd: CmdName,
@@ -51,21 +96,63 @@ pub async fn get_ups_by_name(
   Query(query): Query<GetUpsQuery>,
 ) -> Result<Response, ProblemDetail> {
   let Path(ups_name) = ups_name?;
-  let include_cmds = query.include.as_deref() == Some("commands");
+  let force = query.include.as_deref() == Some("commands");
   let server_state = rs.state.read().await;
   if let Some(ups) = server_state.devices.get(&ups_name) {
-    if include_cmds {
-      let mut value = serde_json::to_value(ups).unwrap();
-      drop(server_state);
-      let (addr, user, password) = require_auth_config!(&rs.config.upsd)?;
-      let mut client = NutAuthClient::connect(addr, user, password).await?;
-      let cmds = client.list_instcmds(&ups_name).await?;
-      _ = client.close().await;
-      value["commands"] = serde_json::to_value(cmds).unwrap();
-      Ok(Json(value).into_response())
+    let (power_w, approx) = {
+      let mut approx = false;
+      let value = if let Some(v) = ups
+        .variables
+        .get(VarName::UPS_REALPOWER)
+        .and_then(|v| v.as_lossly_f64())
+      {
+        Some(v)
+      } else if let Some(v) = ups
+        .variables
+        .get(VarName::UPS_POWER)
+        .and_then(|v| v.as_lossly_f64())
+      {
+        Some(v)
+      } else {
+        let load = ups
+          .variables
+          .get(VarName::UPS_LOAD)
+          .and_then(|v| v.as_lossly_f64());
+        let nominal = ups
+          .variables
+          .get(VarName::UPS_REALPOWER_NOMINAL)
+          .and_then(|v| v.as_lossly_f64())
+          .or_else(|| {
+            ups
+              .variables
+              .get(VarName::UPS_POWER_NOMINAL)
+              .and_then(|v| v.as_lossly_f64())
+          });
+        match (load, nominal) {
+          (Some(load), Some(nominal)) => {
+            approx = true;
+            Some((nominal * load / 100.0).round())
+          }
+          _ => None,
+        }
+      };
+      (value, approx)
+    };
+    let mut value = serde_json::to_value(ups).unwrap();
+    drop(server_state);
+    let cmds = get_commands_cached(&rs, &ups_name, force).await;
+    value["commands"] = serde_json::to_value(cmds).unwrap();
+    value["power_is_approx"] = approx.into();
+    if let Some(p) = power_w {
+      if let Some(n) = serde_json::Number::from_f64(p) {
+        value["power_w"] = serde_json::Value::Number(n);
+      } else {
+        value["power_w"] = serde_json::Value::Null;
+      }
     } else {
-      Ok(Json(ups).into_response())
+      value["power_w"] = serde_json::Value::Null;
     }
+    Ok(Json(value).into_response())
   } else {
     Err(ProblemDetail::new(
       "Device not found",

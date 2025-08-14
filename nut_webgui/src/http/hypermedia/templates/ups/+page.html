@@ -103,10 +103,12 @@
               {%- call tab_button(device.name, tab_name = "clients", title = "Clients", icon = "monitor", is_active = false) -%}
             {%- endif -%}
 
-            {%- if let UpsPageTabTemplate::Commands { .. } = tab_template  -%}
-              {%- call tab_button(device.name, tab_name = "commands", title = "Commands", icon = "play", is_active = true) -%}
-            {%- else -%}
-              {%- call tab_button(device.name, tab_name = "commands", title = "Commands", icon = "play", is_active = false) -%}
+            {%- if !device.commands.is_empty() -%}
+              {%- if let UpsPageTabTemplate::Commands { .. } = tab_template  -%}
+                {%- call tab_button(device.name, tab_name = "commands", title = "Commands", icon = "play", is_active = true) -%}
+              {%- else -%}
+                {%- call tab_button(device.name, tab_name = "commands", title = "Commands", icon = "play", is_active = false) -%}
+              {%- endif -%}
             {%- endif -%}
 
             {%- if let UpsPageTabTemplate::Rw { .. } = tab_template  -%}

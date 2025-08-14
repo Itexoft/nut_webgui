@@ -799,6 +799,7 @@ dependencies = [
  "futures",
  "nut_webgui_client",
  "nut_webgui_upsmc",
+ "once_cell",
  "serde",
  "serde_json",
  "tokio",
