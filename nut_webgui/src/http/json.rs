@@ -1,5 +1,9 @@
-use super::{RouterState, problem_detail::ProblemDetail};
-use crate::state::CommandsCacheEntry;
+use super::{
+  RouterState,
+  commands::{get_cached_commands, update_commands},
+  problem_detail::ProblemDetail,
+};
+
 use crate::{
   config::UpsdConfig,
   device_entry::{DeviceEntry, VarDetail},
@@ -13,11 +17,8 @@ use axum::{
   http::{HeaderValue, StatusCode},
   response::{IntoResponse, Response},
 };
-use nut_webgui_upsmc::InstCmd;
-use nut_webgui_upsmc::errors::{ErrorKind, ProtocolError};
 use nut_webgui_upsmc::{CmdName, UpsName, Value, VarName, clients::NutAuthClient};
 use serde::Deserialize;
-use std::time::{Duration, Instant};
 use tracing::{info, warn};
 
 macro_rules! require_auth_config {
@@ -34,83 +35,6 @@ macro_rules! require_auth_config {
       ),
     }
   };
-}
-
-async fn get_cached_commands(rs: &RouterState, ups_name: &UpsName) -> (Vec<InstCmd>, bool) {
-  let ttl = Duration::from_secs(rs.config.commands_ttl);
-  let now = Instant::now();
-  let state = rs.state.read().await;
-  if let Some(entry) = state.commands_cache.get(ups_name) {
-    let stale = now.duration_since(entry.fetched_at) >= ttl;
-    (entry.commands.clone(), stale)
-  } else {
-    (Vec::new(), true)
-  }
-}
-
-async fn update_commands(
-  rs: &RouterState,
-  ups_name: &UpsName,
-) -> Result<Vec<InstCmd>, ProblemDetail> {
-  let (addr, user, password) = require_auth_config!(&rs.config.upsd)?;
-  let mut client = match NutAuthClient::connect(addr, user, password).await {
-    Ok(c) => c,
-    Err(err) => {
-      return match err.kind() {
-        ErrorKind::ProtocolError {
-          inner: ProtocolError::AccessDenied,
-        } => Err(ProblemDetail::new(
-          "Access denied",
-          StatusCode::UNAUTHORIZED,
-        )),
-        ErrorKind::ProtocolError {
-          inner: ProtocolError::UnknownUps,
-        } => Err(ProblemDetail::new(
-          "Device not found",
-          StatusCode::NOT_FOUND,
-        )),
-        ErrorKind::IOError { .. } | ErrorKind::RequestTimeout => Err(ProblemDetail::new(
-          "UPS daemon unreachable",
-          StatusCode::BAD_GATEWAY,
-        )),
-        _ => Err(err.into()),
-      };
-    }
-  };
-  let cmds = match client.list_instcmds(ups_name).await {
-    Ok(c) => c,
-    Err(err) => {
-      return match err.kind() {
-        ErrorKind::ProtocolError {
-          inner: ProtocolError::AccessDenied,
-        } => Err(ProblemDetail::new(
-          "Access denied",
-          StatusCode::UNAUTHORIZED,
-        )),
-        ErrorKind::ProtocolError {
-          inner: ProtocolError::UnknownUps,
-        } => Err(ProblemDetail::new(
-          "Device not found",
-          StatusCode::NOT_FOUND,
-        )),
-        ErrorKind::IOError { .. } | ErrorKind::RequestTimeout => Err(ProblemDetail::new(
-          "UPS daemon unreachable",
-          StatusCode::BAD_GATEWAY,
-        )),
-        _ => Err(err.into()),
-      };
-    }
-  };
-  _ = client.close().await;
-  let mut state = rs.state.write().await;
-  state.commands_cache.insert(
-    ups_name.clone(),
-    CommandsCacheEntry {
-      fetched_at: Instant::now(),
-      commands: cmds.clone(),
-    },
-  );
-  Ok(cmds)
 }
 
 #[derive(Debug, Deserialize)]

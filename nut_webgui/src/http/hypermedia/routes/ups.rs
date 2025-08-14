@@ -4,6 +4,7 @@ use crate::{
   htmx_redirect, htmx_swap,
   http::{
     RouterState,
+    commands::{get_cached_commands, update_commands},
     hypermedia::{
       error::ErrorPage, notifications::NotificationTemplate, semantic_classes::SemanticType,
       utils::RenderWithConfig,
@@ -229,10 +230,15 @@ pub async fn get(
   query: Query<UpsFragmentQuery>,
   rs: State<RouterState>,
 ) -> Result<Response, ErrorPage<askama::Error>> {
+  let tab_name = query.tab.unwrap_or(TabName::Grid);
+  if tab_name == TabName::Commands {
+    let (_, stale) = get_cached_commands(&rs, &ups_name).await;
+    if stale {
+      let _ = update_commands(&rs, &ups_name).await;
+    }
+  }
   let state = rs.state.read().await;
   let ups_entry = state.devices.get(&ups_name);
-  let tab_name = query.tab.unwrap_or(TabName::Grid);
-
   match query.section.as_deref() {
     Some("status") => partial_ups_status(ups_entry, &rs.config),
     Some("tab_content") => partial_tab_content(ups_entry, tab_name, &state, &rs.config),

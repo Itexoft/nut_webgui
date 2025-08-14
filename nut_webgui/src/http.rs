@@ -1,3 +1,4 @@
+mod commands;
 mod hypermedia;
 mod json;
 mod middlewares;
