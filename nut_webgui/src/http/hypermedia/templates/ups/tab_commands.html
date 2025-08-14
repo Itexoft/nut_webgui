@@ -1,7 +1,5 @@
 {%- import "icons.html" as icons -%}
 {%- let base_path = askama::get_value::<String>("HTTP_SERVER__BASE_PATH")? -%}
-{%- if commands.len() > 0 -%}
-
 <div class="content-card flex flex-col gap-4">
   <h2 class="opacity-60 text-lg tracking-wide">Commands</h2>
   <label class="input input-ghost input-sm opacity-60 tracking-wide">
@@ -74,7 +72,3 @@
     {%- endfor -%}
   </nut-search-list>
 </div>
-{%- else -%}
-<p>No instant commands exposed by NUT for this UPS</p>
-<p class="opacity-60 text-sm">Check instcmd permissions in upsd.users</p>
-{%- endif -%}
