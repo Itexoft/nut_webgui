@@ -3,6 +3,7 @@ use super::{
   commands::{get_cached_commands, update_commands},
   problem_detail::ProblemDetail,
 };
+
 use crate::{
   config::UpsdConfig,
   device_entry::{DeviceEntry, VarDetail},
