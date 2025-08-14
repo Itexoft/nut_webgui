@@ -1,4 +1,8 @@
-use super::{RouterState, problem_detail::ProblemDetail};
+use super::{
+  RouterState,
+  commands::{get_cached_commands, update_commands},
+  problem_detail::ProblemDetail,
+};
 use crate::{
   config::UpsdConfig,
   device_entry::{DeviceEntry, VarDetail},
@@ -9,16 +13,11 @@ use axum::{
     Path, Query, State,
     rejection::{JsonRejection, PathRejection},
   },
-  http::StatusCode,
+  http::{HeaderValue, StatusCode},
   response::{IntoResponse, Response},
 };
-use nut_webgui_upsmc::InstCmd;
-use nut_webgui_upsmc::errors::{ErrorKind, ProtocolError};
 use nut_webgui_upsmc::{CmdName, UpsName, Value, VarName, clients::NutAuthClient};
-use once_cell::sync::Lazy;
-use std::{collections::HashMap, time::{Duration, Instant}};
-use tokio::sync::Mutex;
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 use tracing::{info, warn};
 
 macro_rules! require_auth_config {
@@ -35,48 +34,6 @@ macro_rules! require_auth_config {
       ),
     }
   };
-}
-
-static COMMAND_CACHE: Lazy<Mutex<HashMap<UpsName, (Instant, Vec<InstCmd>)>>> = Lazy::new(|| Mutex::new(HashMap::new()));
-
-async fn get_commands_cached(
-  rs: &RouterState,
-  ups_name: &UpsName,
-  force: bool,
-) -> Vec<InstCmd> {
-  let now = Instant::now();
-  if !force {
-    let cache = COMMAND_CACHE.lock().await;
-    if let Some((exp, cmds)) = cache.get(ups_name) {
-      if *exp > now {
-        return cmds.clone();
-      }
-    }
-  }
-  let (addr, user, password) = match (&rs.config.upsd.user, &rs.config.upsd.pass) {
-    (Some(user), Some(pass)) => (rs.config.upsd.get_socket_addr(), user.as_ref(), pass.as_ref()),
-    _ => return Vec::new(),
-  };
-  let mut client = match NutAuthClient::connect(addr, user, password).await {
-    Ok(c) => c,
-    Err(err) => {
-      warn!(message = "failed to list instcmds", device = %ups_name, reason = %err);
-      return Vec::new();
-    }
-  };
-  let cmds = match client.list_instcmds(ups_name).await {
-    Ok(v) => v,
-    Err(err) => {
-      warn!(message = "failed to list instcmds", device = %ups_name, reason = %err);
-      Vec::new()
-    }
-  };
-  _ = client.close().await;
-  let ttl = if cmds.is_empty() { Duration::from_secs(1) } else { Duration::from_secs(2) };
-  let exp = now + ttl;
-  let mut cache = COMMAND_CACHE.lock().await;
-  cache.insert(ups_name.clone(), (exp, cmds.clone()));
-  cmds
 }
 
 #[derive(Debug, Deserialize)]
@@ -140,8 +97,22 @@ pub async fn get_ups_by_name(
     };
     let mut value = serde_json::to_value(ups).unwrap();
     drop(server_state);
-    let cmds = get_commands_cached(&rs, &ups_name, force).await;
-    value["commands"] = serde_json::to_value(cmds).unwrap();
+    let (mut cmds, mut stale) = get_cached_commands(&rs, &ups_name).await;
+    let mut source = "cache";
+    let mut error = None;
+    if force || stale {
+      match update_commands(&rs, &ups_name).await {
+        Ok(c) => {
+          cmds = c;
+          stale = false;
+          source = "upsd";
+        }
+        Err(err) => {
+          error = Some(err.title);
+        }
+      }
+    }
+    value["commands"] = serde_json::to_value(&cmds).unwrap();
     value["power_is_approx"] = approx.into();
     if let Some(p) = power_w {
       if let Some(n) = serde_json::Number::from_f64(p) {
@@ -152,7 +123,20 @@ pub async fn get_ups_by_name(
     } else {
       value["power_w"] = serde_json::Value::Null;
     }
-    Ok(Json(value).into_response())
+    let mut response = Json(value).into_response();
+    response.headers_mut().insert(
+      "X-Commands-Stale",
+      HeaderValue::from_static(if stale { "true" } else { "false" }),
+    );
+    response
+      .headers_mut()
+      .insert("X-Commands-Source", HeaderValue::from_static(source));
+    if let Some(e) = error {
+      response
+        .headers_mut()
+        .insert("X-Commands-Error", HeaderValue::from_static(e));
+    }
+    Ok(response)
   } else {
     Err(ProblemDetail::new(
       "Device not found",
@@ -224,18 +208,11 @@ pub async fn post_command(
   Ok(StatusCode::ACCEPTED)
 }
 
-#[derive(Serialize)]
-struct InstCmdResponse<'a> {
-  ups: &'a UpsName,
-  as_user: &'a str,
-  count: usize,
-  commands: Vec<InstCmd>,
-}
-
 pub async fn get_instcmds(
   State(rs): State<RouterState>,
   ups_name: Result<Path<UpsName>, PathRejection>,
 ) -> Result<Response, ProblemDetail> {
+  warn!(message = "DEPRECATED endpoint used");
   if !rs.config.allow_instcmds_list {
     return Err(ProblemDetail::new(
       "Target resource not found",
@@ -243,63 +220,13 @@ pub async fn get_instcmds(
     ));
   }
   let Path(ups_name) = ups_name?;
-  let (addr, user, password) = require_auth_config!(&rs.config.upsd)?;
-  let mut client = match NutAuthClient::connect(addr, user, password).await {
-    Ok(c) => c,
-    Err(err) => {
-      return match err.kind() {
-        ErrorKind::ProtocolError {
-          inner: ProtocolError::AccessDenied,
-        } => Err(ProblemDetail::new(
-          "Access denied",
-          StatusCode::UNAUTHORIZED,
-        )),
-        ErrorKind::ProtocolError {
-          inner: ProtocolError::UnknownUps,
-        } => Err(ProblemDetail::new(
-          "Device not found",
-          StatusCode::NOT_FOUND,
-        )),
-        ErrorKind::IOError { .. } | ErrorKind::RequestTimeout => Err(ProblemDetail::new(
-          "UPS daemon unreachable",
-          StatusCode::BAD_GATEWAY,
-        )),
-        _ => Err(err.into()),
-      };
-    }
-  };
-  let cmds = match client.list_instcmds(&ups_name).await {
-    Ok(c) => c,
-    Err(err) => {
-      return match err.kind() {
-        ErrorKind::ProtocolError {
-          inner: ProtocolError::AccessDenied,
-        } => Err(ProblemDetail::new(
-          "Access denied",
-          StatusCode::UNAUTHORIZED,
-        )),
-        ErrorKind::ProtocolError {
-          inner: ProtocolError::UnknownUps,
-        } => Err(ProblemDetail::new(
-          "Device not found",
-          StatusCode::NOT_FOUND,
-        )),
-        ErrorKind::IOError { .. } | ErrorKind::RequestTimeout => Err(ProblemDetail::new(
-          "UPS daemon unreachable",
-          StatusCode::BAD_GATEWAY,
-        )),
-        _ => Err(err.into()),
-      };
-    }
-  };
-  _ = client.close().await;
-  let response = InstCmdResponse {
-    ups: &ups_name,
-    as_user: user,
-    count: cmds.len(),
-    commands: cmds,
-  };
-  Ok(Json(response).into_response())
+  let (cmds, stale) = get_cached_commands(&rs, &ups_name).await;
+  if stale {
+    let cmds = update_commands(&rs, &ups_name).await?;
+    Ok(Json(cmds).into_response())
+  } else {
+    Ok(Json(cmds).into_response())
+  }
 }
 
 pub async fn post_fsd(
