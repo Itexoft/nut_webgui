@@ -45,6 +45,12 @@ pub struct RwFormTemplate<'a> {
   pub notification: Option<NotificationTemplate<'a>>,
 }
 
+#[derive(Debug)]
+struct CmdTemplate<'a> {
+  id: &'a CmdName,
+  desc: Option<&'a str>,
+}
+
 #[derive(Template, Debug)]
 enum UpsPageTabTemplate<'a> {
   #[template(source = "", ext = "html")]
@@ -53,7 +59,7 @@ enum UpsPageTabTemplate<'a> {
   #[template(path = "ups/tab_commands.html")]
   Commands {
     device: &'a DeviceEntry,
-    descriptions: &'a HashMap<DescriptionKey, Box<str>>,
+    commands: Vec<CmdTemplate<'a>>,
   },
 
   #[template(path = "ups/tab_variables.html")]
@@ -94,10 +100,20 @@ fn get_tab_template<'a>(
         descriptions: &state.shared_desc,
       }
     }
-    TabName::Commands => UpsPageTabTemplate::Commands {
-      device,
-      descriptions: &state.shared_desc,
-    },
+    TabName::Commands => {
+      let cmds = device
+        .commands
+        .iter()
+        .map(|c| {
+          let desc = state.shared_desc.get(c.as_str()).map(|v| v.as_ref());
+          CmdTemplate { id: c, desc }
+        })
+        .collect();
+      UpsPageTabTemplate::Commands {
+        device,
+        commands: cmds,
+      }
+    }
     TabName::Clients => UpsPageTabTemplate::Clients { device },
     TabName::Rw => {
       let inputs = device

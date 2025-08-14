@@ -23,6 +23,7 @@ pub struct ServerConfig {
   pub upsd: UpsdConfig,
   pub allow_instcmds_list: bool,
   pub dangerous_cmds: Vec<Box<str>>,
+  pub commands_ttl: u64,
 }
 
 #[derive(Debug)]
@@ -106,6 +107,7 @@ impl Default for ServerConfig {
         "shutdown.*".into(),
         "load.off".into(),
       ],
+      commands_ttl: 60,
     }
   }
 }
