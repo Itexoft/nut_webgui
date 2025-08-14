@@ -1,5 +1,6 @@
 {%- import "icons.html" as icons -%}
 {%- let base_path = askama::get_value::<String>("HTTP_SERVER__BASE_PATH")? -%}
+{%- if !device.commands.is_empty() -%}
 
 <div class="content-card flex flex-col gap-4">
   <h2 class="opacity-60 text-lg tracking-wide">Commands</h2>
@@ -75,3 +76,4 @@
     {%- endfor -%}
   </nut-search-list>
 </div>
+{%- endif -%}
