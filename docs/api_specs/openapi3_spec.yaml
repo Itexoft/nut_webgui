@@ -401,16 +401,16 @@ components:
           type: object
           additionalProperties:
             oneOf:
-              - type: "number"
-              - type: "string"
+              - type: number
+              - type: string
         commands:
-          type: "array"
+          type: array
           items:
-            type: "string"
+            type: string
         attached:
-          type: "array"
+          type: array
           items:
-            type: "string"
+            type: string
 
     UpsList:
       type: array
@@ -470,6 +470,7 @@ components:
             - "Online"
             - "Dead"
             - "NotReady"
+
   examples:
     health_200:
       summary: "Server Online"

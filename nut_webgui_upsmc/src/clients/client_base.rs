@@ -156,7 +156,8 @@ where
       R::deserialize(&mut lexer)
     }
   }
-}
+
+  }
 
 impl<S> AsyncNutClient for &mut NutClient<S>
 where
