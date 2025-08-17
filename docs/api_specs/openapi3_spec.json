@@ -184,17 +184,6 @@
               "type": "string"
             }
           },
-          {
-            "name": "include",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "string",
-              "enum": [
-                "commands"
-              ]
-            }
-          }
         ],
         "tags": [
           "ups"
@@ -643,7 +632,7 @@
           "commands": {
             "type": "array",
             "items": {
-              "$ref": "#/components/schemas/InstCmd"
+              "type": "string"
             }
           },
           "attached": {
@@ -651,12 +640,6 @@
             "items": {
               "type": "string"
             }
-          },
-          "power_w": {
-            "type": "number"
-          },
-          "power_is_approx": {
-            "type": "boolean"
           }
         }
       },
@@ -748,47 +731,6 @@
           }
         }
       },
-      "InstCmd": {
-        "type": "object",
-        "required": [
-          "id"
-        ],
-        "properties": {
-          "id": {
-            "type": "string"
-          },
-          "desc": {
-            "type": "string"
-          }
-        }
-      },
-      "InstCmdList": {
-        "type": "object",
-        "required": [
-          "ups",
-          "as_user",
-          "count",
-          "commands"
-        ],
-        "properties": {
-          "ups": {
-            "type": "string"
-          },
-          "as_user": {
-            "type": "string"
-          },
-          "count": {
-            "type": "number"
-          },
-          "commands": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/InstCmd"
-            }
-          }
-        }
-      }
-    },
     "examples": {
       "health_200": {
         "summary": "Server Online",

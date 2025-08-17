@@ -107,7 +107,6 @@ async fn main() -> Result<(), Box<dyn core::error::Error>> {
     remote_state: DaemonState::new(),
     devices: HashMap::new(),
     shared_desc: HashMap::new(),
-    commands_cache: HashMap::new(),
   }));
 
   let device_sync = DeviceSyncService::new(

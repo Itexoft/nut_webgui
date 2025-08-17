@@ -4,7 +4,6 @@ use crate::{
   htmx_redirect, htmx_swap,
   http::{
     RouterState,
-    commands::{get_cached_commands, update_commands},
     hypermedia::{
       error::ErrorPage, notifications::NotificationTemplate, semantic_classes::SemanticType,
       utils::RenderWithConfig,
@@ -48,7 +47,7 @@ pub struct RwFormTemplate<'a> {
 
 #[derive(Debug)]
 struct CmdTemplate<'a> {
-  id: &'a CmdName,
+  id: &'a str,
   desc: Option<&'a str>,
 }
 
@@ -107,7 +106,7 @@ fn get_tab_template<'a>(
         .iter()
         .map(|c| {
           let desc = state.shared_desc.get(c.as_str()).map(|v| v.as_ref());
-          CmdTemplate { id: c, desc }
+          CmdTemplate { id: c.as_str(), desc }
         })
         .collect();
       UpsPageTabTemplate::Commands {
@@ -231,12 +230,6 @@ pub async fn get(
   rs: State<RouterState>,
 ) -> Result<Response, ErrorPage<askama::Error>> {
   let tab_name = query.tab.unwrap_or(TabName::Grid);
-  if tab_name == TabName::Commands {
-    let (_, stale) = get_cached_commands(&rs, &ups_name).await;
-    if stale {
-      let _ = update_commands(&rs, &ups_name).await;
-    }
-  }
   let state = rs.state.read().await;
   let ups_entry = state.devices.get(&ups_name);
   match query.section.as_deref() {
