@@ -1,5 +1,5 @@
 use crate::uri_path::InvalidPathError;
-use core::{net::AddrParseError, num::ParseIntError, str::ParseBoolError};
+use core::{net::AddrParseError, num::ParseIntError};
 use std::ffi::OsString;
 
 #[derive(Debug)]
@@ -43,7 +43,6 @@ pub enum EnvConfigError {
   IOError { inner: std::io::Error },
   NonUnicodeVar { variable: OsString },
   InvalidNumericFormat { inner: ParseIntError },
-  InvalidBoolFormat { inner: ParseBoolError },
   InvalidLogLevelFormat,
   InvalidAddrFormat { inner: core::net::AddrParseError },
   InvalidUriPath,
@@ -64,8 +63,9 @@ impl std::fmt::Display for EnvConfigError {
       EnvConfigError::InvalidNumericFormat { .. } => {
         f.write_fmt(format_args!("invalid numeric format"))
       }
-      EnvConfigError::InvalidBoolFormat { .. } => f.write_fmt(format_args!("invalid bool format")),
-      EnvConfigError::InvalidLogLevelFormat => f.write_fmt(format_args!("invalid log level")),
+      EnvConfigError::InvalidLogLevelFormat => {
+        f.write_fmt(format_args!("invalid log level"))
+      }
       EnvConfigError::InvalidAddrFormat { inner } => {
         f.write_fmt(format_args!("invalid ip address format, {}", inner))
       }
@@ -125,8 +125,3 @@ impl From<std::io::Error> for EnvConfigError {
   }
 }
 
-impl From<ParseBoolError> for EnvConfigError {
-  fn from(value: ParseBoolError) -> Self {
-    Self::InvalidBoolFormat { inner: value }
-  }
-}

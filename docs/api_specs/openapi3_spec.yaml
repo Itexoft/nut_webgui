@@ -401,16 +401,16 @@ components:
           type: object
           additionalProperties:
             oneOf:
-              - type: "number"
-              - type: "string"
+              - type: number
+              - type: string
         commands:
           type: array
           items:
             type: string
         attached:
-          type: "array"
+          type: array
           items:
-            type: "string"
+            type: string
 
     UpsList:
       type: array

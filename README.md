@@ -125,8 +125,6 @@ poll_interval = 2
 
 For more detailed config template see [./containers/config.toml](./containers/config.toml).
 
-### API examples
-
 > Log level options: `info`, `warn`, `error`, `debug`, `trace`
 
 ## JSON data API
