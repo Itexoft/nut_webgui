@@ -250,7 +250,7 @@ where
 
               entry.variables = var_list.variables;
               entry.attached = clients.ips;
-              entry.commands = commands.cmds.into_iter().map(|c| c.into_boxed_str().into()).collect();
+              entry.commands = commands;
               entry.last_modified = Utc::now();
 
               events.updated_device(clients.ups_name);
